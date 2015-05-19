@@ -20,12 +20,12 @@ typedef struct Set {
 
 static Set *open_set, *close_set;
 
-static Node* create_node(int index, int dst, Node *parent) {
+static Node* create_node(void *ud, int index, int dst, Node *parent) {
     Node *node = (Node *)malloc(sizeof(*node));
     node->index = index;
     node->parent = parent;
-    node->g = gscore(index) + parent->g;
-    node->h = hscore(index, dst);
+    node->g = gscore(ud, index) + parent->g;
+    node->h = hscore(ud, index, dst);
     return node;
 }
 
@@ -141,11 +141,11 @@ static Array* path_backtrace(Node *node, int dst) {
     return arr;
 }
 
-static Array* search(Node *current, int dst) {
+static Array* search(Node *current, int dst, Set *open_set, Set *close_set, void *ud) {
     if (!current)
         return NULL;
 
-    Array *adjs = get_adjs(current->index);
+    Array *adjs = get_adjs(ud, current->index);
     int j;
     for (j = 0; j < adjs->len; j++) {
         int i = adjs->arr[j];
@@ -156,7 +156,7 @@ static Array* search(Node *current, int dst) {
 
         if (set_find(close_set, i) != -1)
             continue;
-        int new_g = gscore(i) + current->g;
+        int new_g = gscore(ud, i) + current->g;
 
         int index;
         if ((index = set_find(open_set, i)) != -1) {
@@ -168,7 +168,7 @@ static Array* search(Node *current, int dst) {
             node->parent = current;
             set_bubble(open_set, index);
         } else {
-            Node *node = create_node(i, dst, current);
+            Node *node = create_node(ud, i, dst, current);
             set_insert(open_set, node);
         }
     }
@@ -176,17 +176,34 @@ static Array* search(Node *current, int dst) {
 
     set_push(close_set, current);
     Node *next = set_pop(open_set);
-    return search(next, dst);
+    return search(next, dst, open_set, close_set, ud);
 }
 
-Array* astar_search(int src, int dst) {
-    open_set = create_set();
-    close_set = create_set();
+typedef struct AStarInfo {
+    Set *open_set, *close_set;
+} AStarInfo;
+
+static AStarInfo* create_info() {
+    AStarInfo *info = (AStarInfo *)malloc(sizeof(*info));
+    info->open_set = create_set();
+    info->close_set = create_set();
+    return info;
+}
+
+static void info_release(AStarInfo **pinfo) {
+    AStarInfo *info = *pinfo;
+    set_release(&info->open_set);
+    set_release(&info->close_set);
+    free(info);
+    *pinfo = NULL;
+}
+
+Array* astar_search(void *ud, int src, int dst) {
+    AStarInfo *info = create_info(ud);
     Node *start = (Node *)calloc(1, sizeof(*start));
     start->index = src;
-    Array *path = search(start, dst);
-    set_release(&open_set);
-    set_release(&close_set);
+    Array *path = search(start, dst, info->open_set, info->close_set, ud);
+    info_release(&info);
     return path;
 }
 
